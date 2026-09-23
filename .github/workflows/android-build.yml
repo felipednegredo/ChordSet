@@ -1,0 +1,244 @@
+name: Android Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      method:
+        description: 'Como compilar: gradle (no próprio runner, sem secrets) ou eas (nuvem Expo, requer EXPO_TOKEN)'
+        type: choice
+        options: [gradle, eas]
+        default: gradle
+      build_type:
+        description: 'Tipo de APK no método gradle'
+        type: choice
+        options: [release, debug]
+        default: release
+      architectures:
+        description: 'ABIs do APK no método gradle (separadas por vírgula)'
+        type: string
+        default: 'armeabi-v7a,arm64-v8a'
+  push:
+    branches: [main]
+    tags: ['v*']
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  JAVA_VERSION: '17'
+  CI: 'true'
+  EXPO_NO_TELEMETRY: '1'
+
+jobs:
+  checks:
+    name: TypeScript, lint e testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: Tests
+        run: npm run test:ci
+
+  build-gradle:
+    name: APK (Gradle)
+    needs: checks
+    if: github.event_name != 'workflow_dispatch' || inputs.method == 'gradle'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: write # only used to attach the APK to a GitHub Release on v* tags
+    env:
+      BUILD_TYPE: ${{ inputs.build_type || 'release' }}
+      ARCHITECTURES: ${{ inputs.architectures || 'armeabi-v7a,arm64-v8a' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      # Keep SDK/NDK versions in sync with the installed React Native release.
+      - name: Read Android SDK versions from React Native
+        id: sdk
+        run: |
+          TOML=node_modules/react-native/gradle/libs.versions.toml
+          read_version() { grep -E "^$1 *=" "$TOML" | head -1 | cut -d'"' -f2; }
+          echo "compile=$(read_version compileSdk)" >> "$GITHUB_OUTPUT"
+          echo "build_tools=$(read_version buildTools)" >> "$GITHUB_OUTPUT"
+          echo "ndk=$(read_version ndkVersion)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          log-accepted-android-sdk-licenses: false
+          packages: >-
+            platform-tools
+            platforms;android-${{ steps.sdk.outputs.compile }}
+            build-tools;${{ steps.sdk.outputs.build_tools }}
+            ndk;${{ steps.sdk.outputs.ndk }}
+
+      - name: Setup Gradle (cache)
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Generate native Android project (expo prebuild)
+        run: npm run prebuild:android
+
+      - name: Decode upload keystore (optional)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.keystore"
+            echo "CHORDSET_UPLOAD_STORE_FILE=$RUNNER_TEMP/upload.keystore" >> "$GITHUB_ENV"
+            echo "Release will be signed with the upload keystore."
+          else
+            echo "::notice::ANDROID_KEYSTORE_BASE64 not set — release APK is signed with the debug keystore (fine for testing)."
+          fi
+
+      - name: Build APK
+        working-directory: android
+        env:
+          CHORDSET_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          CHORDSET_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          CHORDSET_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          NODE_ENV: production
+        run: |
+          if [ "$BUILD_TYPE" = "debug" ]; then TASK=assembleDebug; else TASK=assembleRelease; fi
+          ./gradlew "$TASK" \
+            --no-daemon \
+            -PreactNativeArchitectures="$ARCHITECTURES" \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+
+      - name: Collect APK
+        id: apk
+        run: |
+          APK_DIR="android/app/build/outputs/apk/$BUILD_TYPE"
+          APK_SOURCE="$APK_DIR/app-$BUILD_TYPE.apk"
+          if [ ! -f "$APK_SOURCE" ]; then
+            echo "::error::APK not found at $APK_SOURCE"; ls -R "$APK_DIR" || true; exit 1
+          fi
+          VERSION=$(node -p "require('./app.json').expo.version")
+          NAME="ChordSet-${VERSION}-${BUILD_TYPE}-${GITHUB_SHA::7}.apk"
+          mkdir -p dist
+          cp "$APK_SOURCE" "dist/$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "path=dist/$NAME" >> "$GITHUB_OUTPUT"
+          echo "### 📦 APK gerado: \`$NAME\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Baixe em **Artifacts → chordset-android-apk** no final desta página." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: chordset-android-apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach APK to GitHub Release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ steps.apk.outputs.path }}
+
+  build-eas:
+    name: APK (EAS Build — perfil preview)
+    needs: checks
+    if: github.event_name == 'workflow_dispatch' && inputs.method == 'eas'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check EXPO_TOKEN
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Secret EXPO_TOKEN não configurado. Veja README → GitHub Actions → Secrets."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@v9
+        with:
+          eas-version: latest
+          packager: npm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Link EAS project (only if app.json has no projectId yet)
+        run: |
+          if node -e "process.exit(require('./app.json').expo.extra?.eas?.projectId ? 0 : 1)"; then
+            echo "EAS project already linked."
+          else
+            echo "::notice::Linking/creating the EAS project for this run. Run 'npx eas-cli init' locally and commit app.json to make it permanent."
+            eas init --non-interactive --force
+          fi
+
+      - name: Build on EAS (waits for completion)
+        run: eas build --platform android --profile preview --non-interactive --wait --json > eas-build.json
+
+      - name: Download APK from EAS
+        id: apk
+        run: |
+          URL=$(node -p "const b=require('./eas-build.json'); (Array.isArray(b)?b[0]:b).artifacts.buildUrl")
+          VERSION=$(node -p "require('./app.json').expo.version")
+          NAME="ChordSet-${VERSION}-eas-preview-${GITHUB_SHA::7}.apk"
+          mkdir -p dist
+          curl --fail --location --silent --show-error "$URL" -o "dist/$NAME"
+          echo "path=dist/$NAME" >> "$GITHUB_OUTPUT"
+          echo "### 📦 APK (EAS): \`$NAME\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: chordset-android-apk-eas
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
