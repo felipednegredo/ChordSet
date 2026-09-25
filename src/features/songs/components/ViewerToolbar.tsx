@@ -5,7 +5,7 @@ import { radius, spacing, TOUCH_TARGET, useTheme } from '../../../theme';
 import { MAX_CAPO } from '../../chords';
 import { FONT_SIZE_RANGE, SCROLL_SPEED_RANGE } from '../../settings/settings';
 
-export type ToolbarPanel = 'key' | 'capo' | 'font' | 'scroll' | null;
+export type ToolbarPanel = 'key' | 'capo' | 'font' | 'scroll' | 'rhythm' | null;
 
 export interface ViewerToolbarProps {
   panel: ToolbarPanel;
@@ -26,6 +26,9 @@ export interface ViewerToolbarProps {
   onToggleScroll: () => void;
   scrollSpeed: number;
   onScrollSpeedChange: (speed: number) => void;
+  hasRhythm: boolean;
+  /** Content of the strumming panel, rendered only while it is open. */
+  rhythmPanel: React.ReactNode;
 }
 
 interface ToolProps {
@@ -150,6 +153,8 @@ export function ViewerToolbar(props: ViewerToolbarProps) {
             />
           </View>
         );
+      case 'rhythm':
+        return props.rhythmPanel;
       default:
         return null;
     }
@@ -176,6 +181,12 @@ export function ViewerToolbar(props: ViewerToolbarProps) {
           onPress={() => togglePanel('capo')}
         />
         <Tool icon="text" label="Fonte" active={panel === 'font'} onPress={() => togglePanel('font')} />
+        <Tool
+          icon={props.hasRhythm ? 'pulse' : 'pulse-outline'}
+          label="Ritmo"
+          active={panel === 'rhythm'}
+          onPress={() => togglePanel('rhythm')}
+        />
         <Tool
           icon={props.showChords ? 'eye-outline' : 'eye-off-outline'}
           label={props.showChords ? 'Acordes' : 'Só letra'}

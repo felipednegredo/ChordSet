@@ -17,6 +17,9 @@ import { toUserMessage } from '../../../services/errors';
 import { radius, spacing, useTheme } from '../../../theme';
 import type { RepertoireEntry } from '../../../types';
 import { parseChordSheet, transposeSheet } from '../../chords';
+import { RhythmPanel } from '../../rhythm/components/RhythmPanel';
+import { StrumPatternView } from '../../rhythm/components/StrumPatternView';
+import { parsePattern } from '../../rhythm/pattern';
 import { useSettings } from '../../settings/SettingsProvider';
 import { ChordSheetView } from '../components/ChordSheetView';
 import { type ToolbarPanel, ViewerToolbar } from '../components/ViewerToolbar';
@@ -40,6 +43,8 @@ export function SongViewerScreen() {
 
   const { song } = viewer;
   const sheet = useMemo(() => (song ? parseChordSheet(song.content) : null), [song]);
+  const rhythm = song?.rhythm ?? '';
+  const strumPattern = useMemo(() => (rhythm ? parsePattern(rhythm) : null), [rhythm]);
   const display = useMemo(
     () =>
       song
@@ -140,6 +145,15 @@ export function SongViewerScreen() {
               {keyInfo}
               {entry && entry.key !== null ? '  ·  tom do repertório' : ''}
             </AppText>
+            {strumPattern ? (
+              <View style={styles.rhythm}>
+                <AppText variant="label" color="textMuted">
+                  Levada{song.tempo ? ` · ${song.tempo} BPM` : ''}
+                  {strumPattern.repeats > 1 ? ` · ${strumPattern.repeats}x` : ''}
+                </AppText>
+                <StrumPatternView pattern={strumPattern} />
+              </View>
+            ) : null}
           </View>
           <ChordSheetView sheet={transposed} fontSize={settings.sheetFontSize} showChords={showChords} />
         </Pressable>
@@ -193,6 +207,10 @@ export function SongViewerScreen() {
             onToggleScroll={autoScroll.toggle}
             scrollSpeed={settings.autoScrollSpeed}
             onScrollSpeedChange={(autoScrollSpeed) => updateSettings({ autoScrollSpeed })}
+            hasRhythm={strumPattern !== null}
+            rhythmPanel={
+              <RhythmPanel rhythm={song.rhythm} tempo={song.tempo} onChange={viewer.changeRhythm} />
+            }
           />
         </View>
       ) : null}
@@ -251,6 +269,7 @@ const styles = StyleSheet.create({
   },
   titleBlock: { gap: spacing.xs, marginBottom: spacing.xl },
   keyInfo: { marginTop: spacing.xs },
+  rhythm: { gap: spacing.xs, marginTop: spacing.md, maxWidth: 480 },
   bottom: { width: '100%', maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
   setlistBar: {
     flexDirection: 'row',

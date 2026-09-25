@@ -1,4 +1,5 @@
 import { clampCapo, isValidKey } from '../chords';
+import { clampTempo, normalizePatternText, parsePattern } from '../rhythm/pattern';
 import { ValidationError } from '../../services/errors';
 import type { SongInput } from '../../types';
 
@@ -6,7 +7,7 @@ export const TITLE_MAX_LENGTH = 120;
 export const ARTIST_MAX_LENGTH = 120;
 
 export type SongFormErrors = Partial<
-  Record<'title' | 'artist' | 'originalKey' | 'currentKey' | 'content', string>
+  Record<'title' | 'artist' | 'originalKey' | 'currentKey' | 'content' | 'rhythm', string>
 >;
 
 /** Returns field errors for a song form (empty object when valid). */
@@ -20,6 +21,9 @@ export function getSongFormErrors(input: SongInput): SongFormErrors {
   if (!isValidKey(input.originalKey)) errors.originalKey = 'Selecione o tom original.';
   if (!isValidKey(input.currentKey)) errors.currentKey = 'Selecione o tom atual.';
   if (!input.content.trim()) errors.content = 'Cole ou escreva a cifra.';
+  const rhythm = input.rhythm?.trim() ?? '';
+  if (rhythm && !parsePattern(rhythm))
+    errors.rhythm = 'Use D (baixo), U (cima), X (abafado) e - (pausa), até 16 batidas.';
   return errors;
 }
 
@@ -35,6 +39,8 @@ export function validateSongInput(input: SongInput): Required<SongInput> {
     currentKey: input.currentKey.trim(),
     capo: clampCapo(input.capo),
     content: input.content.replace(/\r\n?/g, '\n'),
+    rhythm: normalizePatternText(input.rhythm ?? ''),
+    tempo: input.tempo === null || input.tempo === undefined ? null : clampTempo(input.tempo),
     favorite: input.favorite ?? false,
   };
 }

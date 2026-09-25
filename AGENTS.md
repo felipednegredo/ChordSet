@@ -12,6 +12,7 @@ Expo ships breaking changes every SDK. Check the installed version in `package.j
 - `src/features/<feature>/` — screens, components, hooks and pure logic per feature.
   - `chords/` transposition + ChordPro parser (pure TS, unit tested)
   - `tuner/` PCM → YIN → frequency → note → cents (pure TS) and `useTuner` (expo-audio)
+  - `rhythm/` strumming patterns, onset detection and timing grader (pure TS) and `useRhythmPractice` (expo-audio)
 - `src/database/` — expo-sqlite migrations (`PRAGMA user_version`) and row mappers.
   Screens never write SQL: use `useRepositories()`.
 - `src/components/`, `src/theme/`, `src/hooks/`, `src/services/`, `src/types/` — shared code.

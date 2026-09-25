@@ -102,6 +102,22 @@ export function useSongViewer(songId: string, entryId?: string) {
     }
   }, [mutate, reload, song, songs]);
 
+  /** Strumming pattern and tempo always belong to the song, also inside a repertoire. */
+  const changeRhythm = useCallback(
+    async (rhythm: string, tempo: number | null) => {
+      if (!song) return;
+      mutate((current) => ({ ...current, song: current.song && { ...current.song, rhythm, tempo } }));
+      try {
+        await songs.setRhythm(song.id, rhythm, tempo);
+      } catch (error) {
+        logError('changeRhythm', error);
+        Alert.alert('Não foi possível salvar', toUserMessage(error));
+        await reload();
+      }
+    },
+    [mutate, reload, song, songs],
+  );
+
   const navigation = useMemo(() => {
     const entries = data?.entries ?? [];
     const index = entry ? entries.findIndex((e) => e.id === entry.id) : -1;
@@ -127,6 +143,7 @@ export function useSongViewer(songId: string, entryId?: string) {
     resetKey,
     changeCapo,
     toggleFavorite,
+    changeRhythm,
     navigation,
   };
 }
