@@ -6,6 +6,7 @@ import { NotFoundError } from '../../services/errors';
 import { createId } from '../../services/id';
 import { normalizeForSearch } from '../../services/text';
 import type { Song, SongQuery, SongRepository, SongSummary } from '../../types';
+import { clampTempo, normalizePatternText } from '../rhythm/pattern';
 import { validateSongInput } from './songValidation';
 
 const SUMMARY_COLUMNS =
@@ -49,8 +50,9 @@ export function createSongRepository(db: SQLiteDatabase): SongRepository {
       const id = createId();
       const now = nowIso();
       await db.runAsync(
-        `INSERT INTO songs (id, title, artist, original_key, current_key, capo, content, favorite, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO songs (id, title, artist, original_key, current_key, capo, content, rhythm, tempo, favorite,
+         created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         data.title,
         data.artist,
@@ -58,6 +60,8 @@ export function createSongRepository(db: SQLiteDatabase): SongRepository {
         data.currentKey,
         data.capo,
         data.content,
+        data.rhythm,
+        data.tempo,
         data.favorite ? 1 : 0,
         now,
         now,
@@ -69,13 +73,15 @@ export function createSongRepository(db: SQLiteDatabase): SongRepository {
       const data = validateSongInput(input);
       const result = await db.runAsync(
         `UPDATE songs SET title = ?, artist = ?, original_key = ?, current_key = ?, capo = ?, content = ?,
-         favorite = COALESCE(?, favorite), updated_at = ? WHERE id = ?`,
+         rhythm = ?, tempo = ?, favorite = COALESCE(?, favorite), updated_at = ? WHERE id = ?`,
         data.title,
         data.artist,
         data.originalKey,
         data.currentKey,
         data.capo,
         data.content,
+        data.rhythm,
+        data.tempo,
         input.favorite === undefined ? null : input.favorite ? 1 : 0,
         nowIso(),
         id,
@@ -99,6 +105,16 @@ export function createSongRepository(db: SQLiteDatabase): SongRepository {
 
     async setCapo(id, capo) {
       await db.runAsync('UPDATE songs SET capo = ?, updated_at = ? WHERE id = ?', capo, nowIso(), id);
+    },
+
+    async setRhythm(id, rhythm, tempo) {
+      await db.runAsync(
+        'UPDATE songs SET rhythm = ?, tempo = ?, updated_at = ? WHERE id = ?',
+        normalizePatternText(rhythm),
+        tempo === null ? null : clampTempo(tempo),
+        nowIso(),
+        id,
+      );
     },
 
     async remove(id) {

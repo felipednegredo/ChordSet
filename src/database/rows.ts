@@ -10,12 +10,14 @@ export interface SongRow {
   current_key: string;
   capo: number;
   content: string;
+  rhythm: string;
+  tempo: number | null;
   favorite: number;
   created_at: string;
   updated_at: string;
 }
 
-export type SongSummaryRow = Omit<SongRow, 'content'>;
+export type SongSummaryRow = Omit<SongRow, 'content' | 'rhythm' | 'tempo'>;
 
 export interface RepertoireRow {
   id: string;
@@ -49,7 +51,7 @@ export function mapSongSummary(row: SongSummaryRow): SongSummary {
 }
 
 export function mapSong(row: SongRow): Song {
-  return { ...mapSongSummary(row), content: row.content };
+  return { ...mapSongSummary(row), content: row.content, rhythm: row.rhythm, tempo: row.tempo };
 }
 
 export function mapRepertoire(row: RepertoireRow): Repertoire {

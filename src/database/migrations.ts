@@ -83,4 +83,14 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 3,
+    name: 'song_rhythm',
+    up: async (db) => {
+      await db.execAsync(`
+        ALTER TABLE songs ADD COLUMN rhythm TEXT NOT NULL DEFAULT '';
+        ALTER TABLE songs ADD COLUMN tempo INTEGER CHECK (tempo IS NULL OR tempo BETWEEN 40 AND 200);
+      `);
+    },
+  },
 ];

@@ -16,6 +16,8 @@ const EMPTY_SONG: SongInput = {
   currentKey: 'C',
   capo: 0,
   content: '',
+  rhythm: '',
+  tempo: null,
 };
 
 export function NewSongScreen() {

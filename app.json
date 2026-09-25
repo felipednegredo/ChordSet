@@ -38,7 +38,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "O ChordSet usa o microfone apenas para o afinador. Nenhum áudio é gravado ou enviado.",
+          "microphonePermission": "O ChordSet usa o microfone apenas para o afinador e para conferir o ritmo. Nenhum áudio é gravado ou enviado.",
           "recordAudioAndroid": true,
           "enableBackgroundPlayback": false,
           "enableBackgroundRecording": false

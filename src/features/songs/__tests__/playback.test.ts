@@ -66,8 +66,21 @@ describe('song validation', () => {
       currentKey: 'A',
       capo: 3,
       content: '[G]x',
+      rhythm: '',
+      tempo: null,
       favorite: false,
     });
+  });
+
+  it('normalises the strumming pattern and clamps the tempo', () => {
+    const data = validateSongInput({ ...valid, rhythm: ' bcbc x2 ', tempo: 500 });
+    expect(data.rhythm).toBe('DU DU x2');
+    expect(data.tempo).toBe(200);
+  });
+
+  it('rejects an invalid strumming pattern', () => {
+    expect(getSongFormErrors({ ...valid, rhythm: 'D?U' }).rhythm).toMatch(/D \(baixo\)/);
+    expect(getSongFormErrors({ ...valid, rhythm: '' }).rhythm).toBeUndefined();
   });
 
   it('reports missing fields', () => {

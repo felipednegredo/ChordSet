@@ -11,12 +11,16 @@ export interface Song {
   capo: number;
   /** Chord sheet in ChordPro-like format. */
   content: string;
+  /** Strumming pattern in text notation (see `features/rhythm/pattern.ts`), '' when unset. */
+  rhythm: string;
+  /** Tempo in BPM for the strumming pattern, null when unset. */
+  tempo: number | null;
   favorite: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-export type SongSummary = Omit<Song, 'content'>;
+export type SongSummary = Omit<Song, 'content' | 'rhythm' | 'tempo'>;
 
 export interface SongInput {
   title: string;
@@ -25,6 +29,8 @@ export interface SongInput {
   currentKey: string;
   capo: number;
   content: string;
+  rhythm?: string;
+  tempo?: number | null;
   favorite?: boolean;
 }
 

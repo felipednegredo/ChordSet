@@ -22,6 +22,7 @@ export interface SongRepository {
   setFavorite(id: string, favorite: boolean): Promise<void>;
   setCurrentKey(id: string, key: string): Promise<void>;
   setCapo(id: string, capo: number): Promise<void>;
+  setRhythm(id: string, rhythm: string, tempo: number | null): Promise<void>;
   remove(id: string): Promise<void>;
 }
 
