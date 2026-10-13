@@ -107,7 +107,8 @@ export function SettingsScreen() {
       />
 
       <AppText variant="caption" color="textMuted" align="center">
-        ChordSet {version} · funciona 100% offline · seus dados ficam neste aparelho
+        ChordSet {version} · funciona offline · internet só para importar cifras · seus dados ficam neste
+        aparelho
       </AppText>
     </ScrollView>
   );

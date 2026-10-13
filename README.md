@@ -1,6 +1,6 @@
 # ChordSet
 
-Aplicativo para músicos: **cifras**, **repertórios (setlists)** e **afinador**, pensado para ensaios, cultos e apresentações. Funciona 100% offline; os dados ficam no aparelho.
+Aplicativo para músicos: **cifras**, **repertórios (setlists)** e **afinador**, pensado para ensaios, cultos e apresentações. Funciona offline (a internet só é usada para importar uma cifra a partir de um link, como do Cifra Club); os dados ficam no aparelho.
 
 - **Cifras** — biblioteca local com busca por título/artista, favoritas, transposição (maior/menor, sustenidos, bemóis, sétimas, baixo invertido), capo, tamanho de fonte, mostrar/esconder acordes, rolagem automática com velocidade ajustável e modo palco (toque na cifra para esconder os controles).
 - **Formato** — parser próprio inspirado no [ChordPro](https://www.chordpro.org/) (`[G]Grande é o Senhor`, `{title: …}`, `{soc}`/`{eoc}` …). Também aceita cifras coladas no formato "acordes em cima da letra" e converte para ChordPro.
