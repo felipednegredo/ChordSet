@@ -22,23 +22,23 @@ export function formatNote(note: Pick<NoteInfo, 'name' | 'octave'>): string {
   return `${note.name}${note.octave}`;
 }
 
-export type GuitarStringId = 'E2' | 'A2' | 'D3' | 'G3' | 'B3' | 'E4';
-
 export interface InstrumentString {
-  id: GuitarStringId;
-  /** 6 = lowest (thickest) string, 1 = highest. */
+  /** Note and octave (e.g. "E2"); unique inside a tuning. */
+  id: string;
+  /** 1 = highest-pitched course in standard order; the largest number is the lowest string. */
   number: number;
   name: NoteName;
   octave: number;
   midi: number;
 }
 
+/** Builds strings from MIDI numbers listed from the lowest-numbered string (thickest) to the highest. */
+export function stringsFromMidi(midis: readonly number[]): InstrumentString[] {
+  return midis.map((midi, index) => {
+    const note = noteFromMidi(midi);
+    return { id: formatNote(note), number: midis.length - index, name: note.name, octave: note.octave, midi };
+  });
+}
+
 /** Standard guitar tuning, from the 6th (low E) to the 1st string (high E). */
-export const GUITAR_STANDARD_TUNING: readonly InstrumentString[] = [
-  { id: 'E2', number: 6, name: 'E', octave: 2, midi: 40 },
-  { id: 'A2', number: 5, name: 'A', octave: 2, midi: 45 },
-  { id: 'D3', number: 4, name: 'D', octave: 3, midi: 50 },
-  { id: 'G3', number: 3, name: 'G', octave: 3, midi: 55 },
-  { id: 'B3', number: 2, name: 'B', octave: 3, midi: 59 },
-  { id: 'E4', number: 1, name: 'E', octave: 4, midi: 64 },
-];
+export const GUITAR_STANDARD_TUNING: readonly InstrumentString[] = stringsFromMidi([40, 45, 50, 55, 59, 64]);

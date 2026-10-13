@@ -1,29 +1,23 @@
+import { parseChord } from './chord';
+import { simplifyChord } from './harmony';
 import type { Accidental } from './notes';
 import { transposeChord } from './transpose';
 import type { ChordSegment, ChordSheet, SheetLine } from './types';
 
-/** Returns a new sheet with every chord transposed. The input is not mutated. */
-export function transposeSheet(
-  sheet: ChordSheet,
-  semitones: number,
-  accidental: Accidental = 'sharp',
-): ChordSheet {
-  if (semitones % 12 === 0) return sheet;
+/** Returns a new sheet with `map` applied to every chord. The input is not mutated. */
+export function mapSheetChords(sheet: ChordSheet, map: (chord: string) => string): ChordSheet {
   const mapLine = (line: SheetLine): SheetLine => {
     if (line.kind === 'lyrics') {
       return {
         kind: 'lyrics',
         segments: line.segments.map((s) => ({
-          chord: s.chord === null ? null : transposeChord(s.chord, semitones, accidental),
+          chord: s.chord === null ? null : map(s.chord),
           lyrics: s.lyrics,
         })),
       };
     }
     if (line.kind === 'chords') {
-      return {
-        kind: 'chords',
-        chords: line.chords.map((c) => ({ ...c, chord: transposeChord(c.chord, semitones, accidental) })),
-      };
+      return { kind: 'chords', chords: line.chords.map((c) => ({ ...c, chord: map(c.chord) })) };
     }
     return line;
   };
@@ -32,6 +26,33 @@ export function transposeSheet(
     metadata: sheet.metadata,
     sections: sheet.sections.map((section) => ({ ...section, lines: section.lines.map(mapLine) })),
   };
+}
+
+/** Returns a new sheet with every chord transposed. The input is not mutated. */
+export function transposeSheet(
+  sheet: ChordSheet,
+  semitones: number,
+  accidental: Accidental = 'sharp',
+): ChordSheet {
+  if (semitones % 12 === 0) return sheet;
+  return mapSheetChords(sheet, (chord) => transposeChord(chord, semitones, accidental));
+}
+
+/** Replaces extended chords with basic triads (see {@link simplifyChord}). */
+export function simplifySheet(sheet: ChordSheet): ChordSheet {
+  return mapSheetChords(sheet, simplifyChord);
+}
+
+/** Distinct chords of a sheet, in order of first appearance (used for the diagram strip). */
+export function collectChords(sheet: ChordSheet): string[] {
+  const seen = new Set<string>();
+  for (const section of sheet.sections) {
+    for (const line of section.lines) {
+      if (line.kind === 'lyrics') line.segments.forEach((s) => s.chord !== null && seen.add(s.chord));
+      if (line.kind === 'chords') line.chords.forEach((c) => seen.add(c.chord));
+    }
+  }
+  return [...seen].filter((chord) => parseChord(chord) !== null);
 }
 
 export interface DisplayToken {

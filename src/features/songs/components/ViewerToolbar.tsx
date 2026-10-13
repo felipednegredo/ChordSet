@@ -1,11 +1,19 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, Icon, type IconName, IconButton, Stepper } from '../../../components';
+import { AppText, Button, Chip, Icon, type IconName, IconButton, Stepper } from '../../../components';
 import { radius, spacing, TOUCH_TARGET, useTheme } from '../../../theme';
-import { MAX_CAPO } from '../../chords';
+import { CHORD_INSTRUMENTS, type ChordInstrumentId, MAX_CAPO } from '../../chords';
 import { FONT_SIZE_RANGE, SCROLL_SPEED_RANGE } from '../../settings/settings';
 
-export type ToolbarPanel = 'key' | 'capo' | 'font' | 'scroll' | 'rhythm' | null;
+export type ToolbarPanel = 'key' | 'capo' | 'font' | 'scroll' | 'rhythm' | 'view' | null;
+
+export interface ViewOptions {
+  showChords: boolean;
+  showDiagrams: boolean;
+  simplifyChords: boolean;
+  leftHanded: boolean;
+  chordInstrument: ChordInstrumentId;
+}
 
 export interface ViewerToolbarProps {
   panel: ToolbarPanel;
@@ -20,8 +28,8 @@ export interface ViewerToolbarProps {
   onCapoChange: (capo: number) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
-  showChords: boolean;
-  onToggleChords: () => void;
+  view: ViewOptions;
+  onViewChange: (patch: Partial<ViewOptions>) => void;
   isScrolling: boolean;
   onToggleScroll: () => void;
   scrollSpeed: number;
@@ -155,6 +163,53 @@ export function ViewerToolbar(props: ViewerToolbarProps) {
         );
       case 'rhythm':
         return props.rhythmPanel;
+      case 'view': {
+        const { view, onViewChange } = props;
+        return (
+          <View style={styles.viewPanel}>
+            <View style={styles.panelRow}>
+              <Chip
+                label="Acordes"
+                icon={view.showChords ? 'eye-outline' : 'eye-off-outline'}
+                selected={view.showChords}
+                onPress={() => onViewChange({ showChords: !view.showChords })}
+              />
+              <Chip
+                label="Diagramas"
+                icon="grid-outline"
+                selected={view.showDiagrams}
+                onPress={() => onViewChange({ showDiagrams: !view.showDiagrams })}
+              />
+              <Chip
+                label="Simplificar"
+                icon="leaf-outline"
+                selected={view.simplifyChords}
+                onPress={() => onViewChange({ simplifyChords: !view.simplifyChords })}
+                accessibilityLabel="Simplificar acordes"
+              />
+              <Chip
+                label="Canhoto"
+                icon="hand-left-outline"
+                selected={view.leftHanded}
+                onPress={() => onViewChange({ leftHanded: !view.leftHanded })}
+                accessibilityLabel="Diagramas para canhoto"
+              />
+            </View>
+            {view.showDiagrams ? (
+              <View style={styles.panelRow}>
+                {CHORD_INSTRUMENTS.map((instrument) => (
+                  <Chip
+                    key={instrument.id}
+                    label={instrument.name}
+                    selected={view.chordInstrument === instrument.id}
+                    onPress={() => onViewChange({ chordInstrument: instrument.id })}
+                  />
+                ))}
+              </View>
+            ) : null}
+          </View>
+        );
+      }
       default:
         return null;
     }
@@ -188,10 +243,10 @@ export function ViewerToolbar(props: ViewerToolbarProps) {
           onPress={() => togglePanel('rhythm')}
         />
         <Tool
-          icon={props.showChords ? 'eye-outline' : 'eye-off-outline'}
-          label={props.showChords ? 'Acordes' : 'Só letra'}
-          active={!props.showChords}
-          onPress={props.onToggleChords}
+          icon={props.view.showChords ? 'options-outline' : 'eye-off-outline'}
+          label={props.view.showChords ? 'Exibir' : 'Só letra'}
+          active={panel === 'view' || !props.view.showChords}
+          onPress={() => togglePanel('view')}
         />
         <Tool
           icon={props.isScrolling ? 'pause-circle' : 'play-circle-outline'}
@@ -219,6 +274,7 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   hint: { maxWidth: 140 },
+  viewPanel: { gap: spacing.md },
   tools: { flexDirection: 'row', paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
   tool: {
     flex: 1,

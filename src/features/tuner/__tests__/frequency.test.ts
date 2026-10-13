@@ -6,7 +6,7 @@ import {
   nearestString,
   tuningStatus,
 } from '../frequency';
-import { guitarReading } from '../guitar';
+import { stringReading } from '../instruments';
 import { GUITAR_STANDARD_TUNING, noteFromMidi } from '../notes';
 
 describe('frequency ↔ MIDI', () => {
@@ -93,7 +93,7 @@ describe('guitar strings', () => {
   });
 
   it('measures against a fixed string even when far off', () => {
-    const reading = guitarReading(100, 'A2', 440);
+    const reading = stringReading(100, GUITAR_STANDARD_TUNING, 'A2', 440);
     expect(reading?.string.id).toBe('A2');
     expect(reading?.cents).toBeCloseTo(-165, 0);
   });

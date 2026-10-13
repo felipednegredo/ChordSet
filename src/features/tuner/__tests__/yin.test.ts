@@ -90,6 +90,21 @@ describe('PitchAnalyzer', () => {
     expectCents(last!, 110, 3);
   });
 
+  it.each([
+    ['bass low E', 41.2],
+    ['5-string bass low B', 30.87],
+  ])('tracks the %s with the bass range', (_, frequency) => {
+    const analyzer = new PitchAnalyzer({ minFrequency: 27, maxFrequency: 600 });
+    const signal = harmonicTone(frequency, 48000, 48000);
+    let last: number | null = null;
+    for (let offset = 0; offset < signal.length; offset += 960) {
+      const frame = analyzer.push(signal.subarray(offset, offset + 960), 48000);
+      if (frame?.frequency) last = frame.frequency;
+    }
+    expect(last).not.toBeNull();
+    expectCents(last!, frequency, 3);
+  });
+
   it('gates silence', () => {
     const analyzer = new PitchAnalyzer();
     let frame = null;

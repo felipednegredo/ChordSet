@@ -16,13 +16,14 @@ import {
 import { toUserMessage } from '../../../services/errors';
 import { radius, spacing, useTheme } from '../../../theme';
 import type { RepertoireEntry } from '../../../types';
-import { parseChordSheet, transposeSheet } from '../../chords';
+import { collectChords, parseChordSheet, simplifySheet, transposeSheet } from '../../chords';
 import { RhythmPanel } from '../../rhythm/components/RhythmPanel';
 import { StrumPatternView } from '../../rhythm/components/StrumPatternView';
 import { parsePattern } from '../../rhythm/pattern';
 import { useSettings } from '../../settings/SettingsProvider';
 import { ChordSheetView } from '../components/ChordSheetView';
-import { type ToolbarPanel, ViewerToolbar } from '../components/ViewerToolbar';
+import { ChordStrip } from '../components/ChordStrip';
+import { type ToolbarPanel, ViewerToolbar, type ViewOptions } from '../components/ViewerToolbar';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useSongViewer } from '../hooks/useSongViewer';
 import { computePlaybackDisplay } from '../playback';
@@ -42,7 +43,12 @@ export function SongViewerScreen() {
   const [controlsVisible, setControlsVisible] = useState(true);
 
   const { song } = viewer;
-  const sheet = useMemo(() => (song ? parseChordSheet(song.content) : null), [song]);
+  const { simplifyChords } = settings;
+  const sheet = useMemo(() => {
+    if (!song) return null;
+    const parsed = parseChordSheet(song.content);
+    return simplifyChords ? simplifySheet(parsed) : parsed;
+  }, [song, simplifyChords]);
   const rhythm = song?.rhythm ?? '';
   const strumPattern = useMemo(() => (rhythm ? parsePattern(rhythm) : null), [rhythm]);
   const display = useMemo(
@@ -59,6 +65,21 @@ export function SongViewerScreen() {
   const transposed = useMemo(
     () => (sheet && display ? transposeSheet(sheet, display.semitones, display.accidental) : null),
     [sheet, display],
+  );
+  const sheetChords = useMemo(() => (transposed ? collectChords(transposed) : []), [transposed]);
+  const viewOptions: ViewOptions = {
+    showChords,
+    showDiagrams: settings.showDiagrams,
+    simplifyChords,
+    leftHanded: settings.leftHanded,
+    chordInstrument: settings.chordInstrument,
+  };
+  const changeView = useCallback(
+    ({ showChords: nextShowChords, ...patch }: Partial<ViewOptions>) => {
+      if (nextShowChords !== undefined) setShowChords(nextShowChords);
+      if (Object.keys(patch).length > 0) updateSettings(patch);
+    },
+    [updateSettings],
   );
 
   const goToEntry = useCallback(
@@ -154,6 +175,15 @@ export function SongViewerScreen() {
                 <StrumPatternView pattern={strumPattern} />
               </View>
             ) : null}
+            {showChords && settings.showDiagrams ? (
+              <View style={styles.diagrams}>
+                <ChordStrip
+                  chords={sheetChords}
+                  instrument={settings.chordInstrument}
+                  leftHanded={settings.leftHanded}
+                />
+              </View>
+            ) : null}
           </View>
           <ChordSheetView sheet={transposed} fontSize={settings.sheetFontSize} showChords={showChords} />
         </Pressable>
@@ -201,8 +231,8 @@ export function SongViewerScreen() {
             onCapoChange={viewer.changeCapo}
             fontSize={settings.sheetFontSize}
             onFontSizeChange={(sheetFontSize) => updateSettings({ sheetFontSize })}
-            showChords={showChords}
-            onToggleChords={() => setShowChords((value) => !value)}
+            view={viewOptions}
+            onViewChange={changeView}
             isScrolling={autoScroll.isScrolling}
             onToggleScroll={autoScroll.toggle}
             scrollSpeed={settings.autoScrollSpeed}
@@ -269,6 +299,7 @@ const styles = StyleSheet.create({
   },
   titleBlock: { gap: spacing.xs, marginBottom: spacing.xl },
   keyInfo: { marginTop: spacing.xs },
+  diagrams: { marginTop: spacing.md },
   rhythm: { gap: spacing.xs, marginTop: spacing.md, maxWidth: 480 },
   bottom: { width: '100%', maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
   setlistBar: {

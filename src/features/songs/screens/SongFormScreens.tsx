@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 
 import { Button, EmptyState, ErrorState, LoadingView } from '../../../components';
@@ -8,6 +8,8 @@ import { useAsyncResource } from '../../../hooks/useAsyncResource';
 import { logError, toUserMessage } from '../../../services/errors';
 import type { SongInput } from '../../../types';
 import { SongForm } from '../components/SongForm';
+import { WebImportCard } from '../components/WebImportCard';
+import type { ImportedSong } from '../webImport';
 
 const EMPTY_SONG: SongInput = {
   title: '',
@@ -20,9 +22,24 @@ const EMPTY_SONG: SongInput = {
   tempo: null,
 };
 
+function fromImport(song: ImportedSong): SongInput {
+  const key = song.key ?? EMPTY_SONG.originalKey;
+  return {
+    ...EMPTY_SONG,
+    title: song.title,
+    artist: song.artist,
+    originalKey: key,
+    currentKey: key,
+    capo: song.capo,
+    content: song.content,
+  };
+}
+
 export function NewSongScreen() {
   const router = useRouter();
   const { songs } = useRepositories();
+  // SongForm owns its state: a new key remounts it with the imported values.
+  const [draft, setDraft] = useState({ value: EMPTY_SONG, version: 0 });
 
   const create = async (input: SongInput) => {
     try {
@@ -34,7 +51,28 @@ export function NewSongScreen() {
     }
   };
 
-  return <SongForm initialValue={EMPTY_SONG} submitLabel="Salvar cifra" onSubmit={create} />;
+  const applyImport = (song: ImportedSong) => {
+    setDraft((current) => ({ value: fromImport(song), version: current.version + 1 }));
+    Alert.alert(
+      'Cifra importada',
+      [
+        song.title || 'Sem título',
+        song.key
+          ? `Tom ${song.key}${song.capo ? ` · capo ${song.capo}` : ''}`
+          : 'Confira o tom antes de salvar.',
+      ].join('\n'),
+    );
+  };
+
+  return (
+    <SongForm
+      key={draft.version}
+      initialValue={draft.value}
+      submitLabel="Salvar cifra"
+      onSubmit={create}
+      header={<WebImportCard onImported={applyImport} />}
+    />
+  );
 }
 
 export function EditSongScreen() {

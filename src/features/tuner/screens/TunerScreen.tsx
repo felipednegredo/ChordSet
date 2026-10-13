@@ -1,26 +1,49 @@
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, Screen, ScreenHeader, SegmentedControl, Stepper } from '../../../components';
+import { AppText, Button, Chip, Screen, ScreenHeader, SegmentedControl, Stepper } from '../../../components';
 import { spacing, useTheme } from '../../../theme';
+import type { AppSettings } from '../../settings/settings';
 import { useSettings } from '../../settings/SettingsProvider';
 import { TunerGauge } from '../components/TunerGauge';
 import { StringSelector } from '../components/StringSelector';
 import { frequencyToNote, MAX_A4, MIN_A4, tuningStatus } from '../frequency';
-import { type GuitarMode, guitarReading } from '../guitar';
+import {
+  DEFAULT_TUNING,
+  getInstrument,
+  getTuning,
+  INSTRUMENTS,
+  type StringMode,
+  stringReading,
+} from '../instruments';
 import { useTuner } from '../useTuner';
 
-type TunerMode = 'chromatic' | 'guitar';
+type TunerMode = 'chromatic' | 'instrument';
+
+/** Chromatic mode listens to everything from a low bass B to the top of a cavaquinho. */
+const CHROMATIC_RANGE = { minFrequency: 27, maxFrequency: 1400 };
 
 export function TunerScreen() {
   const { colors } = useTheme();
   const { settings, updateSettings } = useSettings();
   const a4 = settings.a4Reference;
-  const tuner = useTuner();
-  const [mode, setMode] = useState<TunerMode>('guitar');
-  const [guitarMode, setGuitarMode] = useState<GuitarMode>('auto');
+  const [mode, setMode] = useState<TunerMode>('instrument');
+  const [stringMode, setStringMode] = useState<StringMode>('auto');
+  const instrument = getInstrument(settings.tunerInstrument);
+  const tuning = getTuning(instrument, settings.tunerTuning);
+  const tuner = useTuner(mode === 'chromatic' ? CHROMATIC_RANGE : instrument);
   const { stop } = tuner;
+
+  // A fixed string from another tuning makes no sense: go back to automatic.
+  const changeTuning = useCallback(
+    (patch: Partial<Pick<AppSettings, 'tunerInstrument' | 'tunerTuning'>>) => {
+      setStringMode('auto');
+      updateSettings(patch);
+    },
+    [updateSettings],
+  );
 
   // Release the microphone when leaving the tab.
   useFocusEffect(useCallback(() => () => stop(), [stop]));
@@ -39,19 +62,30 @@ export function TunerScreen() {
           }
         : null;
     }
-    const guitar = guitarReading(tuner.frequency, guitarMode, a4);
-    return guitar
+    const string = stringReading(tuner.frequency, tuning.strings, stringMode, a4);
+    return string
       ? {
-          label: guitar.string.name,
-          octave: guitar.string.octave,
-          cents: guitar.cents,
-          target: guitar.targetFrequency,
-          stringId: guitar.string.id,
+          label: string.string.name,
+          octave: string.string.octave,
+          cents: string.cents,
+          target: string.targetFrequency,
+          stringId: string.string.id,
         }
       : null;
-  }, [tuner.frequency, mode, guitarMode, a4]);
+  }, [tuner.frequency, mode, tuning, stringMode, a4]);
 
   const status = reading ? tuningStatus(reading.cents) : null;
+
+  // Short vibration when a note reaches the in-tune zone, like a clip-on tuner's green light.
+  const lastTuned = useRef<string | null>(null);
+  const tunedKey = status === 'in-tune' && reading ? `${reading.label}${reading.octave}` : null;
+  useEffect(() => {
+    if (tunedKey && tunedKey !== lastTuned.current && settings.tunerHaptics) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    }
+    if (tunedKey || !reading) lastTuned.current = tunedKey;
+  }, [tunedKey, reading, settings.tunerHaptics]);
+
   const statusColor =
     status === 'in-tune'
       ? colors.success
@@ -78,12 +112,48 @@ export function TunerScreen() {
 
         <SegmentedControl<TunerMode>
           options={[
-            { value: 'guitar', label: 'Violão' },
+            { value: 'instrument', label: 'Instrumento' },
             { value: 'chromatic', label: 'Cromático' },
           ]}
           value={mode}
           onChange={setMode}
         />
+
+        {mode === 'instrument' ? (
+          <View style={styles.pickers}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chips}
+            >
+              {INSTRUMENTS.map((item) => (
+                <Chip
+                  key={item.id}
+                  label={item.name}
+                  selected={item.id === instrument.id}
+                  onPress={() => changeTuning({ tunerInstrument: item.id, tunerTuning: DEFAULT_TUNING })}
+                />
+              ))}
+            </ScrollView>
+            {instrument.tunings.length > 1 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chips}
+              >
+                {instrument.tunings.map((item) => (
+                  <Chip
+                    key={item.id}
+                    label={item.name}
+                    selected={item.id === tuning.id}
+                    onPress={() => changeTuning({ tunerTuning: item.id })}
+                    accessibilityLabel={`Afinação ${item.name}`}
+                  />
+                ))}
+              </ScrollView>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={styles.display} accessibilityLiveRegion="polite">
           <View style={styles.noteRow}>
@@ -117,10 +187,11 @@ export function TunerScreen() {
         <TunerGauge cents={reading?.cents ?? null} status={status} />
         <LevelBar level={tuner.level} active={tuner.isListening} />
 
-        {mode === 'guitar' ? (
+        {mode === 'instrument' ? (
           <StringSelector
-            mode={guitarMode}
-            onModeChange={setGuitarMode}
+            strings={tuning.strings}
+            mode={stringMode}
+            onModeChange={setStringMode}
             activeString={reading?.stringId ?? null}
             inTune={status === 'in-tune'}
           />
@@ -211,4 +282,6 @@ const styles = StyleSheet.create({
   levelFill: { height: '100%' },
   notice: { gap: spacing.md, alignItems: 'center' },
   reference: { alignItems: 'center' },
+  pickers: { gap: spacing.sm },
+  chips: { gap: spacing.sm },
 });

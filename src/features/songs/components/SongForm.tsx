@@ -20,6 +20,8 @@ export interface SongFormProps {
   initialValue: SongInput;
   submitLabel: string;
   onSubmit: (value: SongInput) => Promise<void>;
+  /** Rendered above the fields (e.g. the web import card). */
+  header?: React.ReactNode;
   footer?: React.ReactNode;
 }
 
@@ -31,7 +33,7 @@ const CONTENT_PLACEHOLDER = `{title: Nome da música}
 
 — ou cole acordes em cima da letra —`;
 
-export function SongForm({ initialValue, submitLabel, onSubmit, footer }: SongFormProps) {
+export function SongForm({ initialValue, submitLabel, onSubmit, header, footer }: SongFormProps) {
   const [value, setValue] = useState<SongInput>(initialValue);
   const [errors, setErrors] = useState<SongFormErrors>({});
   const [saving, setSaving] = useState(false);
@@ -84,6 +86,7 @@ export function SongForm({ initialValue, submitLabel, onSubmit, footer }: SongFo
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {header}
         <TextField
           label="Título"
           value={value.title}
