@@ -32,12 +32,25 @@ export class ImportError extends AppError {
   }
 }
 
+/**
+ * Without a browser User-Agent, sites behind anti-bot protection (Cifra Club
+ * included) answer 403 to the default "okhttp/x" agent of React Native.
+ */
+const BROWSER_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+};
+
 /** Accepts "cifraclub.com.br/artista/musica" or a full URL. Returns null when it is not http(s). */
 export function normalizeImportUrl(input: string): string | null {
   let text = input.trim();
   // Links shared from a browser often come with the page title before the URL.
   const embedded = /https?:\/\/\S+/i.exec(text);
   if (embedded) text = embedded[0];
+  // The fragment ("#instrument=guitar&key=8" on Cifra Club) is never sent to the server.
+  text = text.replace(/#.*$/, '');
   if (!text) return null;
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) text = `https://${text}`;
   const match = /^(https?):\/\/([^/?#\s]+)([^\s]*)$/i.exec(text);
@@ -48,6 +61,23 @@ export function normalizeImportUrl(input: string): string | null {
 export function hostOf(url: string): string {
   return (/^https?:\/\/([^/?#:]+)/i.exec(url)?.[1] ?? '').toLowerCase().replace(/^(www|m)\./, '');
 }
+
+/**
+ * Addresses to try, in order. Cifra Club serves the same cifra at the song
+ * root ("/artista/musica/") and at "/artista/musica/principal.html"; when one
+ * is blocked or missing the other usually works.
+ */
+export function importUrlCandidates(url: string): string[] {
+  const candidates = [url];
+  if (hostOf(url) === 'cifraclub.com.br') {
+    const root = url.replace(/\/principal\.html(?=$|\?)/i, '/');
+    if (root !== url) candidates.push(root);
+  }
+  return candidates;
+}
+
+/** Statuses for which trying the next candidate address may help. */
+const RETRY_STATUSES = new Set([403, 404, 429, 503]);
 
 const NAMED_ENTITIES: Record<string, string> = {
   amp: '&',
@@ -227,6 +257,26 @@ export function parseSongPage(html: string, url: string): ImportedSong {
   };
 }
 
+async function download(url: string, fetchImpl: typeof fetch): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    return await fetchImpl(url, { signal: controller.signal, headers: BROWSER_HEADERS });
+  } catch (error) {
+    throw new ImportError('Não foi possível baixar a página. Verifique sua conexão com a internet.', error);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readText(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch (error) {
+    throw new ImportError('Não foi possível baixar a página. Verifique sua conexão com a internet.', error);
+  }
+}
+
 /** Downloads and parses a song page. */
 export async function importSongFromUrl(
   input: string,
@@ -235,27 +285,23 @@ export async function importSongFromUrl(
   const url = normalizeImportUrl(input);
   if (!url) throw new ImportError('Endereço inválido. Cole o link da página da cifra.');
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let html: string;
-  try {
-    const response = await fetchImpl(url, {
-      signal: controller.signal,
-      headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'pt-BR,pt;q=0.9' },
-    });
-    if (!response.ok) {
-      throw new ImportError(
-        response.status === 404
-          ? 'Página não encontrada. Confira o link.'
-          : `O site respondeu com erro (${response.status}). Tente novamente mais tarde.`,
-      );
+  const candidates = importUrlCandidates(url);
+  let html = '';
+  for (let i = 0; i < candidates.length; i++) {
+    const response = await download(candidates[i], fetchImpl);
+    if (response.ok) {
+      html = await readText(response);
+      break;
     }
-    html = await response.text();
-  } catch (error) {
-    if (error instanceof ImportError) throw error;
-    throw new ImportError('Não foi possível baixar a página. Verifique sua conexão com a internet.', error);
-  } finally {
-    clearTimeout(timer);
+    const isLast = i === candidates.length - 1;
+    if (!isLast && RETRY_STATUSES.has(response.status)) continue;
+    throw new ImportError(
+      response.status === 404
+        ? 'Página não encontrada. Confira o link.'
+        : response.status === 403
+          ? 'O site bloqueou o acesso (erro 403). Tente novamente mais tarde ou copie e cole o texto da cifra.'
+          : `O site respondeu com erro (${response.status}). Tente novamente mais tarde.`,
+    );
   }
 
   if (html.length > MAX_HTML_LENGTH) throw new ImportError('A página é grande demais para ser uma cifra.');
