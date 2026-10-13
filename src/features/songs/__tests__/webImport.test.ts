@@ -6,6 +6,7 @@ import {
   hostOf,
   ImportError,
   importSongFromUrl,
+  importUrlCandidates,
   normalizeImportUrl,
   parseSongPage,
 } from '../webImport';
@@ -50,6 +51,10 @@ describe('normalizeImportUrl', () => {
     ['cifraclub.com.br/legiao-urbana/tempo-perdido', 'https://cifraclub.com.br/legiao-urbana/tempo-perdido'],
     ['  HTTPS://M.CifraClub.com.br/a/b  ', 'https://m.cifraclub.com.br/a/b'],
     ['Tempo Perdido - Cifra Club https://www.cifraclub.com.br/x/y/', 'https://www.cifraclub.com.br/x/y/'],
+    [
+      'https://www.cifraclub.com.br/joao-mano/melhor-que-a-vida/principal.html#instrument=guitar&key=8',
+      'https://www.cifraclub.com.br/joao-mano/melhor-que-a-vida/principal.html',
+    ],
   ])('%s', (input, expected) => {
     expect(normalizeImportUrl(input)).toBe(expected);
   });
@@ -147,10 +152,36 @@ describe('importSongFromUrl', () => {
     expect(song.title).toBe('Tempo Perdido');
   });
 
+  it('sends browser headers and falls back to the Cifra Club song root', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response('', 403))
+      .mockResolvedValueOnce(response(CIFRA_CLUB_PAGE));
+    const song = await importSongFromUrl(
+      'https://www.cifraclub.com.br/joao-mano/melhor-que-a-vida/principal.html#instrument=guitar&key=8',
+      fetchMock,
+    );
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      'https://www.cifraclub.com.br/joao-mano/melhor-que-a-vida/principal.html',
+      'https://www.cifraclub.com.br/joao-mano/melhor-que-a-vida/',
+    ]);
+    expect(fetchMock.mock.calls[0][1].headers['User-Agent']).toMatch(/^Mozilla\/5\.0/);
+    expect(song.title).toBe('Tempo Perdido');
+  });
+
+  it('only adds fallbacks for Cifra Club', () => {
+    expect(importUrlCandidates('https://site.com/a/principal.html')).toEqual([
+      'https://site.com/a/principal.html',
+    ]);
+  });
+
   it('reports HTTP and network errors', async () => {
     await expect(
       importSongFromUrl('a.com/x', jest.fn().mockResolvedValue(response('', 404))),
     ).rejects.toThrow('Página não encontrada');
+    await expect(
+      importSongFromUrl('a.com/x', jest.fn().mockResolvedValue(response('', 403))),
+    ).rejects.toThrow('bloqueou o acesso');
     await expect(
       importSongFromUrl('a.com/x', jest.fn().mockRejectedValue(new TypeError('offline'))),
     ).rejects.toThrow('Verifique sua conexão');
