@@ -2,18 +2,19 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText, Chip } from '../../../components';
 import { radius, spacing, useTheme } from '../../../theme';
-import type { GuitarMode } from '../guitar';
-import { GUITAR_STANDARD_TUNING, type GuitarStringId } from '../notes';
+import type { StringMode } from '../instruments';
+import type { InstrumentString } from '../notes';
 
 export interface StringSelectorProps {
-  mode: GuitarMode;
-  onModeChange: (mode: GuitarMode) => void;
+  strings: readonly InstrumentString[];
+  mode: StringMode;
+  onModeChange: (mode: StringMode) => void;
   /** String currently detected (highlighted in auto mode). */
-  activeString: GuitarStringId | null;
+  activeString: string | null;
   inTune: boolean;
 }
 
-export function StringSelector({ mode, onModeChange, activeString, inTune }: StringSelectorProps) {
+export function StringSelector({ strings, mode, onModeChange, activeString, inTune }: StringSelectorProps) {
   const { colors } = useTheme();
   return (
     <View style={styles.wrapper}>
@@ -29,7 +30,7 @@ export function StringSelector({ mode, onModeChange, activeString, inTune }: Str
         </AppText>
       </View>
       <View style={styles.strings}>
-        {GUITAR_STANDARD_TUNING.map((string) => {
+        {strings.map((string) => {
           const selected = mode === string.id;
           const active = activeString === string.id;
           const borderColor = active

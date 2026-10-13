@@ -6,7 +6,7 @@ import {
 } from 'expo-audio';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { PitchAnalyzer } from './analyzer';
+import { type AnalyzerOptions, PitchAnalyzer } from './analyzer';
 import { decodePcm } from './pcm';
 import { logError } from '../../services/errors';
 
@@ -33,8 +33,9 @@ const HOLD_MS = 900;
  * The hook only deals with the audio session and React state; all DSP lives in
  * pure TypeScript modules.
  */
-export function useTuner() {
-  const analyzer = useRef(new PitchAnalyzer());
+export function useTuner(range: Pick<AnalyzerOptions, 'minFrequency' | 'maxFrequency'> = {}) {
+  const { minFrequency, maxFrequency } = range;
+  const analyzer = useRef(new PitchAnalyzer(range));
   const lastEmit = useRef(0);
   const lastPitchAt = useRef(0);
   const [state, setState] = useState<TunerState>({ status: 'idle', frequency: null, level: 0, error: null });
@@ -58,6 +59,11 @@ export function useTuner() {
       };
     });
   }, []);
+
+  // Bass and ukulele need different detection ranges; swap the analyzer when the range changes.
+  useEffect(() => {
+    analyzer.current = new PitchAnalyzer({ minFrequency, maxFrequency });
+  }, [minFrequency, maxFrequency]);
 
   const { stream } = useAudioStream({ sampleRate: SAMPLE_RATE, channels: 1, encoding: 'float32', onBuffer });
 

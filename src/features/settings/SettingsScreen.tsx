@@ -1,8 +1,9 @@
 import Constants from 'expo-constants';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, MAX_CONTENT_WIDTH, SegmentedControl, Stepper } from '../../components';
+import { AppText, Button, Chip, MAX_CONTENT_WIDTH, SegmentedControl, Stepper } from '../../components';
 import { spacing, useTheme } from '../../theme';
+import { CHORD_INSTRUMENTS, type ChordInstrumentId } from '../chords/diagrams';
 import { DEFAULT_A4, MAX_A4, MIN_A4 } from '../tuner/frequency';
 import { DEFAULT_SETTINGS, FONT_SIZE_RANGE, type ThemeMode } from './settings';
 import { useSettings } from './SettingsProvider';
@@ -44,6 +45,34 @@ export function SettingsScreen() {
         </AppText>
       </Section>
 
+      <Section title="Diagramas de acordes">
+        <SegmentedControl<ChordInstrumentId>
+          options={CHORD_INSTRUMENTS.map((instrument) => ({ value: instrument.id, label: instrument.name }))}
+          value={settings.chordInstrument}
+          onChange={(chordInstrument) => updateSettings({ chordInstrument })}
+        />
+        <View style={styles.chips}>
+          <Chip
+            label="Mostrar na cifra"
+            icon="grid-outline"
+            selected={settings.showDiagrams}
+            onPress={() => updateSettings({ showDiagrams: !settings.showDiagrams })}
+          />
+          <Chip
+            label="Modo canhoto"
+            icon="hand-left-outline"
+            selected={settings.leftHanded}
+            onPress={() => updateSettings({ leftHanded: !settings.leftHanded })}
+          />
+          <Chip
+            label="Simplificar acordes"
+            icon="leaf-outline"
+            selected={settings.simplifyChords}
+            onPress={() => updateSettings({ simplifyChords: !settings.simplifyChords })}
+          />
+        </View>
+      </Section>
+
       <Section title="Afinador — referência A4">
         <Stepper
           value={`${settings.a4Reference} Hz`}
@@ -61,6 +90,14 @@ export function SettingsScreen() {
             onPress={() => updateSettings({ a4Reference: DEFAULT_A4 })}
           />
         ) : null}
+        <View style={styles.chips}>
+          <Chip
+            label="Vibrar quando afinado"
+            icon="phone-portrait-outline"
+            selected={settings.tunerHaptics}
+            onPress={() => updateSettings({ tunerHaptics: !settings.tunerHaptics })}
+          />
+        </View>
       </Section>
 
       <Button
@@ -97,4 +134,5 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxxl,
   },
   section: { gap: spacing.md, alignItems: 'stretch' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
 });

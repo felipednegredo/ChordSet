@@ -10,8 +10,8 @@ Expo ships breaking changes every SDK. Check the installed version in `package.j
 
 - `app/` — Expo Router routes only. Each file re-exports a screen from `src/features/*/screens`.
 - `src/features/<feature>/` — screens, components, hooks and pure logic per feature.
-  - `chords/` transposition + ChordPro parser (pure TS, unit tested)
-  - `tuner/` PCM → YIN → frequency → note → cents (pure TS) and `useTuner` (expo-audio)
+  - `chords/` transposition, ChordPro parser, chord simplification and diagram fingering search (pure TS, unit tested)
+  - `tuner/` PCM → YIN → frequency → note → cents, instruments/alternate tunings (pure TS) and `useTuner` (expo-audio)
   - `rhythm/` strumming patterns, onset detection and timing grader (pure TS) and `useRhythmPractice` (expo-audio)
 - `src/database/` — expo-sqlite migrations (`PRAGMA user_version`) and row mappers.
   Screens never write SQL: use `useRepositories()`.

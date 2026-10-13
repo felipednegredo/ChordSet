@@ -1,5 +1,5 @@
 import { isChordLine, normalizeToChordPro, parseChordSheet, parseInlineChords } from '../parser';
-import { toDisplayWords, transposeSheet } from '../sheet';
+import { collectChords, simplifySheet, toDisplayWords, transposeSheet } from '../sheet';
 
 const SAMPLE = `{title: Grande é o Senhor}
 {artist: Exemplo}
@@ -152,6 +152,13 @@ describe('transposeSheet', () => {
         { chord: 'F#m', column: 3 },
       ],
     });
+  });
+});
+
+describe('simplifySheet / collectChords', () => {
+  it('simplifies chords and lists them once, in order', () => {
+    const sheet = simplifySheet(parseChordSheet('[Am7(9)]Grande [G7M]é [Am7]o\nD/F#  Am  (2x)\n'));
+    expect(collectChords(sheet)).toEqual(['Am', 'G', 'D']);
   });
 });
 

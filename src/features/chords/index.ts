@@ -5,3 +5,5 @@ export * from './parser';
 export * from './sheet';
 export * from './transpose';
 export * from './types';
+export * from './diagrams';
+export * from './harmony';
