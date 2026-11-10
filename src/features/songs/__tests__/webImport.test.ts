@@ -6,6 +6,9 @@ import {
   hostOf,
   ImportError,
   importSongFromUrl,
+  isChallengePage,
+  PAGE_CAPTURE_SCRIPT,
+  readPageCapture,
   importUrlCandidates,
   normalizeImportUrl,
   parseSongPage,
@@ -147,7 +150,9 @@ describe('importSongFromUrl', () => {
 
   it('downloads and parses the page', async () => {
     const fetchMock = jest.fn().mockResolvedValue(response(CIFRA_CLUB_PAGE));
-    const song = await importSongFromUrl('cifraclub.com.br/legiao-urbana/tempo-perdido/', fetchMock);
+    const song = await importSongFromUrl('cifraclub.com.br/legiao-urbana/tempo-perdido/', {
+      fetchImpl: fetchMock,
+    });
     expect(fetchMock.mock.calls[0][0]).toBe('https://cifraclub.com.br/legiao-urbana/tempo-perdido/');
     expect(song.title).toBe('Tempo Perdido');
   });
@@ -159,7 +164,7 @@ describe('importSongFromUrl', () => {
       .mockResolvedValueOnce(response(CIFRA_CLUB_PAGE));
     const song = await importSongFromUrl(
       'https://www.cifraclub.com.br/joao-mano/melhor-que-a-vida/principal.html#instrument=guitar&key=8',
-      fetchMock,
+      { fetchImpl: fetchMock },
     );
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       'https://www.cifraclub.com.br/joao-mano/melhor-que-a-vida/principal.html',
@@ -177,14 +182,94 @@ describe('importSongFromUrl', () => {
 
   it('reports HTTP and network errors', async () => {
     await expect(
-      importSongFromUrl('a.com/x', jest.fn().mockResolvedValue(response('', 404))),
+      importSongFromUrl('a.com/x', { fetchImpl: jest.fn().mockResolvedValue(response('', 404)) }),
     ).rejects.toThrow('Página não encontrada');
     await expect(
-      importSongFromUrl('a.com/x', jest.fn().mockResolvedValue(response('', 403))),
+      importSongFromUrl('a.com/x', { fetchImpl: jest.fn().mockResolvedValue(response('', 403)) }),
     ).rejects.toThrow('bloqueou o acesso');
     await expect(
-      importSongFromUrl('a.com/x', jest.fn().mockRejectedValue(new TypeError('offline'))),
+      importSongFromUrl('a.com/x', { fetchImpl: jest.fn().mockRejectedValue(new TypeError('offline')) }),
     ).rejects.toThrow('Verifique sua conexão');
     await expect(importSongFromUrl('não é link')).rejects.toThrow('Endereço inválido');
+  });
+
+  const CHALLENGE_PAGE =
+    '<html><head><title>Just a moment...</title></head><body><script src="/cdn-cgi/challenge-platform/x.js"></script></body></html>';
+
+  it('loads the page in the browser engine when the download is blocked', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(response(CHALLENGE_PAGE, 403));
+    const loadInBrowser = jest.fn().mockResolvedValue(CIFRA_CLUB_PAGE);
+    const song = await importSongFromUrl(
+      'https://www.cifraclub.com.br/led-zeppelin/stairway-to-heaven/principal.html#instrument=guitar&key=0',
+      { fetchImpl: fetchMock, loadInBrowser },
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(loadInBrowser).toHaveBeenCalledWith(
+      'https://www.cifraclub.com.br/led-zeppelin/stairway-to-heaven/principal.html',
+    );
+    expect(song.title).toBe('Tempo Perdido');
+  });
+
+  it('also uses the browser engine when the download returns a challenge page', async () => {
+    const loadInBrowser = jest.fn().mockResolvedValue(CIFRA_CLUB_PAGE);
+    const song = await importSongFromUrl('a.com/x', {
+      fetchImpl: jest.fn().mockResolvedValue(response(CHALLENGE_PAGE)),
+      loadInBrowser,
+    });
+    expect(loadInBrowser).toHaveBeenCalledWith('https://a.com/x');
+    expect(song.title).toBe('Tempo Perdido');
+  });
+
+  it('does not use the browser engine for pages that are simply missing', async () => {
+    const loadInBrowser = jest.fn();
+    await expect(
+      importSongFromUrl('a.com/x', {
+        fetchImpl: jest.fn().mockResolvedValue(response('', 404)),
+        loadInBrowser,
+      }),
+    ).rejects.toThrow('Página não encontrada');
+    expect(loadInBrowser).not.toHaveBeenCalled();
+  });
+
+  it('reports a challenge that the browser engine could not pass', async () => {
+    await expect(
+      importSongFromUrl('a.com/x', {
+        fetchImpl: jest.fn().mockResolvedValue(response('', 403)),
+        loadInBrowser: jest.fn().mockResolvedValue(CHALLENGE_PAGE),
+      }),
+    ).rejects.toThrow('bloqueou o acesso');
+  });
+});
+
+describe('page capture (hidden WebView)', () => {
+  it('waits while the anti-bot check runs and accepts the real page', () => {
+    const challenge =
+      '<title>Just a moment...</title><script src="/cdn-cgi/challenge-platform/x.js"></script>';
+    expect(isChallengePage(challenge)).toBe(true);
+    expect(isChallengePage(CIFRA_CLUB_PAGE)).toBe(false);
+    expect(readPageCapture(JSON.stringify({ found: false, html: challenge }))).toEqual({ kind: 'wait' });
+    expect(readPageCapture('not json')).toEqual({ kind: 'wait' });
+    expect(readPageCapture(JSON.stringify({ found: true, html: CIFRA_CLUB_PAGE }))).toEqual({
+      kind: 'page',
+      html: CIFRA_CLUB_PAGE,
+    });
+    expect(readPageCapture(JSON.stringify({ found: false, html: '<p>sem cifra</p>' }))).toEqual({
+      kind: 'page',
+      html: '<p>sem cifra</p>',
+    });
+  });
+
+  it('captures the page with a script that is valid JavaScript', () => {
+    const posted: string[] = [];
+    const run = new Function('window', 'document', 'setTimeout', PAGE_CAPTURE_SCRIPT);
+    run(
+      { ReactNativeWebView: { postMessage: (data: string) => posted.push(data) } },
+      {
+        getElementsByTagName: () => [{ textContent: 'C  G\nletra' }],
+        documentElement: { outerHTML: '<html><pre>C  G</pre></html>' },
+      },
+      () => undefined,
+    );
+    expect(readPageCapture(posted[0])).toEqual({ kind: 'page', html: '<html><pre>C  G</pre></html>' });
   });
 });

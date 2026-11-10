@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { AppText, Button, TextField } from '../../../components';
 import { logError, toUserMessage } from '../../../services/errors';
+import { usePageLoader } from '../hooks/usePageLoader';
 import { radius, spacing, useTheme } from '../../../theme';
 import { type ImportedSong, importSongFromUrl } from '../webImport';
 
@@ -16,12 +17,13 @@ export function WebImportCard({ onImported }: WebImportCardProps) {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const pageLoader = usePageLoader();
 
   const submit = async () => {
     setLoading(true);
     setError(undefined);
     try {
-      const song = await importSongFromUrl(url);
+      const song = await importSongFromUrl(url, { loadInBrowser: pageLoader.load });
       onImported(song);
       setUrl('');
     } catch (err) {
@@ -61,6 +63,7 @@ export function WebImportCard({ onImported }: WebImportCardProps) {
       <AppText variant="caption" color="textSubtle">
         Use só para uso pessoal e respeite os termos do site de origem.
       </AppText>
+      {pageLoader.element}
     </View>
   );
 }
