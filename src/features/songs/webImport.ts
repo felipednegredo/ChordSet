@@ -4,7 +4,9 @@ import { clampCapo, isChordLine, isValidKey, parseChord } from '../chords';
 /**
  * Imports a chord sheet from a web page (Cifra Club, Cifras, or any site that
  * shows the cifra inside a <pre> block). The page is downloaded once; the song
- * is then stored locally and works offline like any other.
+ * is then stored locally and works offline like any other. When the site
+ * refuses the plain download (anti-bot protection), the page is loaded in a
+ * hidden WebView instead: see `hooks/usePageLoader.tsx`.
  *
  * Parsing is pure TypeScript (no DOM in React Native) so it is unit tested
  * with HTML fixtures.
@@ -277,24 +279,98 @@ async function readText(response: Response): Promise<string> {
   }
 }
 
+/** Statuses with which anti-bot protection answers anything that is not a real browser. */
+const BLOCKED_STATUSES = new Set([401, 403, 429, 503]);
+
+/** Interstitial ("Just a moment...") served by anti-bot protection instead of the page. */
+export function isChallengePage(html: string): boolean {
+  return /cf-chl|challenge-platform|cf-turnstile|<title>\s*(?:just a moment|um momento|attention required)/i.test(
+    html,
+  );
+}
+
+function hasSheet(html: string): boolean {
+  return !!largestPre(html)?.trim();
+}
+
+/**
+ * Script injected in the hidden WebView of `usePageLoader`. It waits for the
+ * cifra (<pre>) to exist and posts the page HTML back to the app. Anti-bot
+ * interstitials navigate to the real page by themselves, where the script runs
+ * again; a page that never shows a cifra is posted with `found: false`.
+ */
+export const PAGE_CAPTURE_SCRIPT = `(function () {
+  var tries = 0;
+  function send(found) {
+    window.ReactNativeWebView.postMessage(
+      JSON.stringify({ found: found, html: document.documentElement.outerHTML.slice(0, ${MAX_HTML_LENGTH + 1}) })
+    );
+  }
+  function check() {
+    var pres = document.getElementsByTagName('pre');
+    for (var i = 0; i < pres.length; i++) {
+      if (pres[i].textContent && pres[i].textContent.trim()) return send(true);
+    }
+    if (++tries >= 10) return send(false);
+    setTimeout(check, 300);
+  }
+  check();
+})();
+true;`;
+
+export type PageCapture =
+  | { kind: 'page'; html: string }
+  /** Keep waiting: the anti-bot check is still running and will load the real page. */
+  | { kind: 'wait' };
+
+/** Interprets a message posted by {@link PAGE_CAPTURE_SCRIPT}. */
+export function readPageCapture(data: string): PageCapture {
+  let message: { found?: unknown; html?: unknown };
+  try {
+    message = JSON.parse(data) as { found?: unknown; html?: unknown };
+  } catch {
+    return { kind: 'wait' };
+  }
+  if (typeof message.html !== 'string') return { kind: 'wait' };
+  if (message.found !== true && isChallengePage(message.html)) return { kind: 'wait' };
+  return { kind: 'page', html: message.html };
+}
+
+export const BLOCKED_MESSAGE =
+  'O site bloqueou o acesso. Tente novamente mais tarde ou copie e cole o texto da cifra.';
+
+export interface ImportOptions {
+  fetchImpl?: typeof fetch;
+  /**
+   * Loads the page in a real browser engine (hidden WebView) and resolves with
+   * its HTML. Used when the plain download is refused by anti-bot protection,
+   * which Cifra Club applies to non-browser clients whatever headers are sent.
+   */
+  loadInBrowser?: (url: string) => Promise<string>;
+}
+
 /** Downloads and parses a song page. */
-export async function importSongFromUrl(
-  input: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<ImportedSong> {
+export async function importSongFromUrl(input: string, options: ImportOptions = {}): Promise<ImportedSong> {
+  const { fetchImpl = fetch, loadInBrowser } = options;
   const url = normalizeImportUrl(input);
   if (!url) throw new ImportError('Endereço inválido. Cole o link da página da cifra.');
 
   const candidates = importUrlCandidates(url);
   let html = '';
+  let blocked = false;
   for (let i = 0; i < candidates.length; i++) {
     const response = await download(candidates[i], fetchImpl);
     if (response.ok) {
       html = await readText(response);
+      blocked = !hasSheet(html) && isChallengePage(html);
       break;
     }
     const isLast = i === candidates.length - 1;
     if (!isLast && RETRY_STATUSES.has(response.status)) continue;
+    if (loadInBrowser && BLOCKED_STATUSES.has(response.status)) {
+      blocked = true;
+      break;
+    }
     throw new ImportError(
       response.status === 404
         ? 'Página não encontrada. Confira o link.'
@@ -302,6 +378,11 @@ export async function importSongFromUrl(
           ? 'O site bloqueou o acesso (erro 403). Tente novamente mais tarde ou copie e cole o texto da cifra.'
           : `O site respondeu com erro (${response.status}). Tente novamente mais tarde.`,
     );
+  }
+
+  if (blocked && loadInBrowser) {
+    html = await loadInBrowser(url);
+    if (!hasSheet(html) && isChallengePage(html)) throw new ImportError(BLOCKED_MESSAGE);
   }
 
   if (html.length > MAX_HTML_LENGTH) throw new ImportError('A página é grande demais para ser uma cifra.');

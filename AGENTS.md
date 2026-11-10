@@ -1,4 +1,4 @@
-ChordSet is an Expo (SDK 57) / React Native app for musicians: chord sheets, setlists and a tuner. Android first, offline first: the only network use is the user-triggered cifra import from a web page (`src/features/songs/webImport.ts`).
+ChordSet is an Expo (SDK 57) / React Native app for musicians: chord sheets, setlists and a tuner. Android first, offline first: the only network use is the user-triggered cifra import from a web page (`src/features/songs/webImport.ts`; sites that block plain downloads are loaded in a hidden `react-native-webview`).
 
 ## Before changing Expo/React Native APIs
 
